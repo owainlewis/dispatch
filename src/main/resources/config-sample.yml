@@ -1,0 +1,10 @@
+routes:
+    method: GET
+    path: '/v1/records'
+    backend:
+      - type: static
+        responseCode: 200
+        responseBody: 'Hello, World!'
+    policies:
+      - name: rate-limit
+

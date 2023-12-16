@@ -20,6 +20,8 @@
     </properties>
 
     <dependencies>
+
+        <!-- Jetty -->
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>
@@ -31,6 +33,7 @@
             <version>${jetty.version}</version>
         </dependency>
 
+        <!-- Logging -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
@@ -40,6 +43,13 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
             <version>${sl4j.version}</version>
+        </dependency>
+
+        <!-- YAML parsing -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>2.16.0</version>
         </dependency>
     </dependencies>
 
