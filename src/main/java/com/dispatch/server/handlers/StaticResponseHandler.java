@@ -22,10 +22,7 @@ public final class StaticResponseHandler extends BaseHandler {
 
     @Override
     public boolean handle(Request request, Response response, Callback callback) throws Exception {
-
         logger.info("Request {}", request);
-
-        Thread.sleep(100);
         response.setStatus(this.statusCode);
         response.write(true, BufferUtil.toBuffer(this.body), callback);
 

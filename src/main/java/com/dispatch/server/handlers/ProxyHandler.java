@@ -20,24 +20,22 @@ public class ProxyHandler extends BaseHandler implements AutoCloseable {
     }
 
     @Override
-    public boolean handle(Request request, Response jettyResponse, Callback callback) throws Exception {
-
+    public boolean handle(Request request, Response response, Callback callback) throws Exception {
         logger.info("Received request {}", request);
 
         // Asynchronously
         this.client.newRequest("https://postman-echo.com/get").send(new org.eclipse.jetty.client.Response.Listener() {
             @Override
-            public void onContent(org.eclipse.jetty.client.Response response, ByteBuffer body) {
-                jettyResponse.setStatus(response.getStatus());
+            public void onContent(org.eclipse.jetty.client.Response backendResponse, ByteBuffer body) {
+                response.setStatus(backendResponse.getStatus());
                 // Copy across all HTTP headers except for Content-Length
-                response.getHeaders().stream().forEach((httpField -> {
+                backendResponse.getHeaders().stream().forEach((httpField -> {
                     if (!httpField.getName().equalsIgnoreCase("Content-Length")) {
-                        jettyResponse.getHeaders().put(httpField);
+                        response.getHeaders().put(httpField);
                     }
                 }));
 
-                jettyResponse.write(true, body, callback);
-
+                response.write(true, body, callback);
             }
         });
 

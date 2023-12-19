@@ -10,6 +10,14 @@ Dispatch uses Jetty and Virtual Threads.
 mvn compile exec:java -Dexec.mainClass="com.dispatch.server.Main"
 ```
 
+## Deploying
+
+You can build a single JAR executable with 
+
+```
+mvn package
+```
+
 # Concepts
 
 ## Routes

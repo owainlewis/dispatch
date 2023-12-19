@@ -7,4 +7,5 @@ import org.slf4j.LoggerFactory;
 public abstract class BaseHandler extends Handler.Abstract {
 
     protected Logger logger = LoggerFactory.getLogger(BaseHandler.class);
+
 }
