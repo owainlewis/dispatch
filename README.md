@@ -7,7 +7,7 @@ Dispatch uses Jetty and Virtual Threads.
 ## Starting the server
 
 ```
-mvn compile exec:java -Dexec.mainClass="com.dispatch.server.Main"
+ mvn clean compile exec:java
 ```
 
 ## Deploying
@@ -19,13 +19,9 @@ mvn package
 ```
 
 # Concepts
-
 ## Routes
-
 ## Backends
-
 ## Policies
-
 # Config 
 
 Dispatch uses a YAML-based configuration format based on routes, backends, and policies.

@@ -1,4 +1,4 @@
-package com.dispatch.server.config;
+package com.dispatch.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;

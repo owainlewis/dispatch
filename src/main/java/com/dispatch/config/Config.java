@@ -1,4 +1,4 @@
-package com.dispatch.server.config;
+package com.dispatch.config;
 
 import java.util.List;
 

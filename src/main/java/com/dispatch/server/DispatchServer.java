@@ -1,58 +1,50 @@
 package com.dispatch.server;
 
-import com.dispatch.server.handlers.ProxyHandler;
-import com.dispatch.server.handlers.StaticResponseHandler;
+import com.dispatch.backend.StaticResponseBackend;
+import com.dispatch.model.Route;
+import lombok.extern.slf4j.Slf4j;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.http.HttpStatus;
+import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
-import org.eclipse.jetty.server.handler.ContextHandlerCollection;
+import org.eclipse.jetty.server.handler.PathMappingsHandler;
 import org.eclipse.jetty.util.VirtualThreads;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+@Slf4j
 public final class DispatchServer {
 
-    private static final Logger logger = LoggerFactory.getLogger(DispatchServer.class);
-
-    private QueuedThreadPool buildThreadPool() {
-        QueuedThreadPool threadPool = new QueuedThreadPool();
-        threadPool.setVirtualThreadsExecutor(VirtualThreads.getDefaultVirtualThreadsExecutor());
-        return threadPool;
-    }
-
-    /**
-     * Builds the handlers from configuration to handle incoming requests
-     *
-     * @return
-     * @throws Exception
-     */
-    private ContextHandlerCollection buildHandlerCollection() throws Exception {
-        ContextHandlerCollection collection = new ContextHandlerCollection();
-        // Static Response
-        StaticResponseHandler staticHandler = new StaticResponseHandler(200, "Hello, World");
-        // Proxy Response
-        ProxyHandler proxyHandler = new ProxyHandler();
-
-        // Filter Chain
-        collection.addHandler(staticHandler);
-
-        return collection;
-    }
+    private HttpClient client;
 
     public void start(int port) throws Exception {
+        // Create an HTTP client
+        HttpClient httpClient = new HttpClient();
+        httpClient.setFollowRedirects(false);
+        httpClient.start();
 
-        Server server = new Server(this.buildThreadPool());
+        // Create the basic server with Virtual Threads
+        QueuedThreadPool threadPool = new QueuedThreadPool();
+        threadPool.setVirtualThreadsExecutor(VirtualThreads.getDefaultVirtualThreadsExecutor());
+        Server server = new Server(threadPool);
 
+        // Configure connectors for the server
         ServerConnector connector = new ServerConnector(server);
         connector.setPort(port);
         server.addConnector(connector);
 
-        ContextHandlerCollection collection = this.buildHandlerCollection();
+        // Configure routes
+        Handler.Sequence root = new Handler.Sequence();
+        server.setHandler(root);
+        PathMappingsHandler pathMappingsHandler = new PathMappingsHandler();
+        root.addHandler(pathMappingsHandler);
 
-        // Start the server and configure it
-        server.setHandler(collection);
+        // Routes (from config)
+        Route firstRoute = new Route("GET", "/v1/foo", new StaticResponseBackend(HttpStatus.OK_200, "Hello, API Gateway"));
+        firstRoute.apply(pathMappingsHandler);
+
         server.start();
 
-        logger.info("Server started on %s".formatted(port));
+        log.info("Server started on %s".formatted(port));
     }
 }

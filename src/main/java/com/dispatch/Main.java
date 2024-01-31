@@ -1,9 +1,11 @@
-package com.dispatch.server;
+package com.dispatch;
 
-import com.dispatch.server.config.Config;
-import com.dispatch.server.config.ConfigReader;
+import com.dispatch.config.Config;
+import com.dispatch.config.ConfigReader;
+import com.dispatch.server.DispatchServer;
 
 public class Main {
+
     private static final String CONFIG = "src/main/resources/config.yml";
 
     public static void main(String[] args) throws Exception {
