@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  dispatch-gateway:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./examples/production-config.yml:/app/config.yml
+    environment:
+      - KEYSTORE_PASSWORD=changeit
+      - JWT_SECRET=your-super-secret-jwt-key
+    command: ["java", "--enable-preview", "-jar", "app.jar", "config.yml"]
+    depends_on:
+      - user-service
+      - order-service
+      - product-service
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  
+  # Example backend services
+  user-service:
+    image: nginx:alpine
+    ports:
+      - "8081:80"
+    volumes:
+      - ./examples/nginx-users.conf:/etc/nginx/conf.d/default.conf
+  
+  order-service:
+    image: nginx:alpine
+    ports:
+      - "8082:80"
+    volumes:
+      - ./examples/nginx-orders.conf:/etc/nginx/conf.d/default.conf
+  
+  product-service:
+    image: nginx:alpine
+    ports:
+      - "8083:80"
+    volumes:
+      - ./examples/nginx-products.conf:/etc/nginx/conf.d/default.conf

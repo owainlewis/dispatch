@@ -1,0 +1,17 @@
+dispatch:
+  server:
+    port: 8080
+  
+  filters:
+    - name: logging
+      enabled: true
+      config:
+        level: INFO
+    
+    - name: proxy
+      enabled: true
+      config:
+        routes:
+          routes:
+            - path: "/*"
+              backend: "http://httpbin.org"
