@@ -1,0 +1,1 @@
+echo "GET http://localhost:8080/status" | vegeta attack -rate=10000 -duration=30s | tee results.bin | vegeta report
