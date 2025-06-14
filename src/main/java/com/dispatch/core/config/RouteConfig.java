@@ -9,11 +9,14 @@ public class RouteConfig {
     @JsonProperty("path")
     private String path;
     
-    @JsonProperty("backend")
-    private String backend;
+    @JsonProperty("type")
+    private String type;
     
     @JsonProperty("backends")
     private List<String> backends;
+    
+    @JsonProperty("response")
+    private StaticResponseConfig response;
     
     @JsonProperty("filters")
     private List<FilterConfig> filters = List.of();
@@ -42,24 +45,28 @@ public class RouteConfig {
         this.path = path;
     }
     
-    public String getBackend() {
-        return backend;
+    public String getType() {
+        return type;
     }
     
-    public void setBackend(String backend) {
-        this.backend = backend;
+    public void setType(String type) {
+        this.type = type;
     }
     
     public List<String> getBackends() {
-        // Return single backend as list if backends not specified
-        if (backends == null || backends.isEmpty()) {
-            return backend != null ? List.of(backend) : List.of();
-        }
-        return backends;
+        return backends != null ? backends : List.of();
     }
     
     public void setBackends(List<String> backends) {
         this.backends = backends;
+    }
+    
+    public StaticResponseConfig getResponse() {
+        return response;
+    }
+    
+    public void setResponse(StaticResponseConfig response) {
+        this.response = response;
     }
     
     public List<FilterConfig> getFilters() {
@@ -108,6 +115,20 @@ public class RouteConfig {
     
     public void setTimeout(TimeoutConfig timeout) {
         this.timeout = timeout != null ? timeout : new TimeoutConfig();
+    }
+    
+    /**
+     * Check if this route is a proxy route
+     */
+    public boolean isProxyRoute() {
+        return "proxy".equals(type);
+    }
+    
+    /**
+     * Check if this route is a static response route
+     */
+    public boolean isStaticRoute() {
+        return "static".equals(type);
     }
     
     /**
@@ -262,6 +283,52 @@ public class RouteConfig {
         
         public void setMaxRetries(int maxRetries) {
             this.maxRetries = maxRetries;
+        }
+    }
+    
+    public static class StaticResponseConfig {
+        @JsonProperty("status")
+        private int status = 200;
+        
+        @JsonProperty("body")
+        private String body = "";
+        
+        @JsonProperty("headers")
+        private Map<String, String> headers = Map.of();
+        
+        @JsonProperty("content_type")
+        private String contentType = "text/plain";
+        
+        public int getStatus() {
+            return status;
+        }
+        
+        public void setStatus(int status) {
+            this.status = status;
+        }
+        
+        public String getBody() {
+            return body;
+        }
+        
+        public void setBody(String body) {
+            this.body = body != null ? body : "";
+        }
+        
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+        
+        public void setHeaders(Map<String, String> headers) {
+            this.headers = headers != null ? headers : Map.of();
+        }
+        
+        public String getContentType() {
+            return contentType;
+        }
+        
+        public void setContentType(String contentType) {
+            this.contentType = contentType != null ? contentType : "text/plain";
         }
     }
 }

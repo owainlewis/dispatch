@@ -8,8 +8,9 @@ global_filters:
       level: INFO
 
 routes:
-  - path: "/api/v1/*"
-    backend: "https://jsonplaceholder.typicode.com"
+  - type: "proxy"
+    path: "/api/v1/*"
+    backends: ["https://jsonplaceholder.typicode.com"]
     filters:
       - name: authentication
         enabled: true
@@ -24,18 +25,36 @@ routes:
         config:
           level: DEBUG
 
-  - path: "/foo"
-    backend: "https://echo.free.beeceptor.com"
+  - type: "proxy"
+    path: "/foo"
+    backends: ["https://echo.free.beeceptor.com"]
     filters:
       - name: logging
         enabled: true
         config:
           level: INFO
 
-  - path: "/public/*"
-    backend: "https://httpbin.org"
+  - type: "proxy"
+    path: "/public/*"
+    backends: ["https://httpbin.org"]
     filters:
       - name: rate-limiting
         enabled: true
         config:
           requests-per-minute: 1000
+
+  - type: "static"
+    path: "/hello"
+    response:
+      status: 200
+      body: "Hello, World!"
+      content_type: "text/plain"
+      headers:
+        X-Custom-Header: "dispatch-gateway"
+
+  - type: "static"
+    path: "/status"
+    response:
+      status: 200
+      body: '{"status": "healthy", "version": "1.0.0"}'
+      content_type: "application/json"

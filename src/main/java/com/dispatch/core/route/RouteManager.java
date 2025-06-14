@@ -8,12 +8,14 @@ import com.dispatch.filters.LoggingFilter;
 import com.dispatch.filters.auth.AuthenticationFilter;
 import com.dispatch.filters.ratelimit.RateLimitingFilter;
 import com.dispatch.filters.transform.HeaderTransformerFilter;
+import io.netty.handler.codec.http.DefaultHttpHeaders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public class RouteManager {
@@ -56,8 +58,10 @@ public class RouteManager {
         // Create combined filter chain (global + route-specific)
         List<GatewayFilter> filters = createFilterChain(matchingRoute);
         
-        // Add implicit proxy filter at the end if route has backends
-        if (!matchingRoute.getBackends().isEmpty()) {
+        // Add backend handler at the end based on route type
+        if (matchingRoute.isStaticRoute()) {
+            filters.add(new StaticResponseFilter(matchingRoute));
+        } else if (matchingRoute.isProxyRoute()) {
             filters.add(new ProxyFilter(matchingRoute));
         }
         
@@ -176,6 +180,58 @@ public class RouteManager {
     }
     
     /**
+     * Internal static response filter implementation
+     */
+    private class StaticResponseFilter implements GatewayFilter {
+        private final RouteConfig route;
+        
+        public StaticResponseFilter(RouteConfig route) {
+            this.route = route;
+        }
+        
+        @Override
+        public String getName() {
+            return "static-response-" + route.getPath();
+        }
+        
+        @Override
+        public boolean shouldApply(HttpRequest request) {
+            return true; // Already matched by route
+        }
+        
+        @Override
+        public CompletableFuture<FilterResult> process(HttpRequest request, FilterContext context) {
+            RouteConfig.StaticResponseConfig staticConfig = route.getResponse();
+            if (staticConfig == null) {
+                return CompletableFuture.completedFuture(
+                    FilterResult.error(500, "Static response configuration missing")
+                );
+            }
+            
+            logger.debug("Returning static response for {} {} (status: {}, body: '{}')", 
+                request.method(), request.path(), staticConfig.getStatus(), staticConfig.getBody());
+            
+            context.setAttribute("static.status", staticConfig.getStatus());
+            context.setAttribute("static.body", staticConfig.getBody());
+            context.setAttribute("static.content-type", staticConfig.getContentType());
+            
+            // Create response headers
+            DefaultHttpHeaders responseHeaders = new DefaultHttpHeaders();
+            staticConfig.getHeaders().forEach(responseHeaders::set);
+            responseHeaders.set("Content-Type", staticConfig.getContentType());
+            responseHeaders.set("Content-Length", String.valueOf(staticConfig.getBody().getBytes().length));
+            
+            HttpResponse response = new HttpResponse(
+                staticConfig.getStatus(),
+                responseHeaders,
+                staticConfig.getBody().getBytes()
+            );
+            
+            return CompletableFuture.completedFuture(FilterResult.respond(response));
+        }
+    }
+    
+    /**
      * Internal proxy filter implementation
      */
     private class ProxyFilter implements GatewayFilter {
@@ -197,15 +253,15 @@ public class RouteManager {
         
         @Override
         public CompletableFuture<FilterResult> process(HttpRequest request, FilterContext context) {
-            String targetPath = route.transformPath(request.path());
-            HttpRequest transformedRequest = transformRequest(request, targetPath);
-            
             List<String> backends = route.getBackends();
             if (backends.isEmpty()) {
                 return CompletableFuture.completedFuture(
-                    FilterResult.error(503, "No available backends")
+                    FilterResult.error(503, "No available backends configured")
                 );
             }
+            
+            String targetPath = route.transformPath(request.path());
+            HttpRequest transformedRequest = transformRequest(request, targetPath);
             
             // Simple round-robin for now (could be improved with load balancer strategy)
             String backend = backends.get(0);
