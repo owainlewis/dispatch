@@ -1,6 +1,6 @@
 package com.dispatch.core.server;
 
-import com.dispatch.core.filter.FilterChain;
+import com.dispatch.core.route.RouteManager;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -26,7 +26,7 @@ public class NettyServer {
     
     private final int port;
     private final boolean sslEnabled;
-    private final FilterChain filterChain;
+    private final RouteManager routeManager;
     private final ExecutorService virtualThreadExecutor;
     
     private EventLoopGroup bossGroup;
@@ -34,10 +34,10 @@ public class NettyServer {
     private Channel serverChannel;
     private SslContext sslContext;
     
-    public NettyServer(int port, boolean sslEnabled, FilterChain filterChain) {
+    public NettyServer(int port, boolean sslEnabled, RouteManager routeManager) {
         this.port = port;
         this.sslEnabled = sslEnabled;
-        this.filterChain = filterChain;
+        this.routeManager = routeManager;
         this.virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
     }
     
@@ -68,7 +68,7 @@ public class NettyServer {
                             pipeline.addLast(new HttpRequestDecoder());
                             pipeline.addLast(new HttpObjectAggregator(1048576)); // 1MB max request size
                             pipeline.addLast(new HttpResponseEncoder());
-                            pipeline.addLast(new DispatchHandler(filterChain, virtualThreadExecutor));
+                            pipeline.addLast(new DispatchHandler(routeManager, virtualThreadExecutor));
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 1024)

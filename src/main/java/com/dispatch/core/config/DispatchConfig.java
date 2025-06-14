@@ -10,8 +10,11 @@ public class DispatchConfig {
     @JsonProperty("server")
     private ServerConfig server = new ServerConfig();
     
-    @JsonProperty("filters")
-    private List<FilterConfig> filters = List.of();
+    @JsonProperty("routes")
+    private List<RouteConfig> routes = List.of();
+    
+    @JsonProperty("global_filters")
+    private List<FilterConfig> globalFilters = List.of();
     
     public ServerConfig getServer() {
         return server;
@@ -21,12 +24,31 @@ public class DispatchConfig {
         this.server = server;
     }
     
-    public List<FilterConfig> getFilters() {
-        return filters;
+    public List<RouteConfig> getRoutes() {
+        return routes;
     }
     
+    public void setRoutes(List<RouteConfig> routes) {
+        this.routes = routes != null ? routes : List.of();
+    }
+    
+    public List<FilterConfig> getGlobalFilters() {
+        return globalFilters;
+    }
+    
+    public void setGlobalFilters(List<FilterConfig> globalFilters) {
+        this.globalFilters = globalFilters != null ? globalFilters : List.of();
+    }
+    
+    // Keep old getters for backward compatibility during transition
+    @Deprecated
+    public List<FilterConfig> getFilters() {
+        return globalFilters;
+    }
+    
+    @Deprecated
     public void setFilters(List<FilterConfig> filters) {
-        this.filters = filters;
+        this.globalFilters = filters != null ? filters : List.of();
     }
     
     public static class ServerConfig {
@@ -88,68 +110,12 @@ public class DispatchConfig {
         }
     }
     
-    public static class FilterConfig {
-        @JsonProperty("name")
-        private String name;
-        
-        @JsonProperty("enabled")
-        private boolean enabled = true;
-        
-        @JsonProperty("config")
-        private Map<String, Object> config = Map.of();
-        
-        public String getName() {
-            return name;
-        }
-        
-        public void setName(String name) {
-            this.name = name;
-        }
-        
-        public boolean isEnabled() {
-            return enabled;
-        }
-        
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-        
-        public Map<String, Object> getConfig() {
-            return config;
-        }
-        
-        public void setConfig(Map<String, Object> config) {
-            this.config = config;
-        }
-        
-        @SuppressWarnings("unchecked")
-        public <T> T getConfigValue(String key, Class<T> type, T defaultValue) {
-            Object value = config.get(key);
-            if (value != null && type.isInstance(value)) {
-                return (T) value;
-            }
-            return defaultValue;
-        }
-        
-        public String getConfigString(String key, String defaultValue) {
-            return getConfigValue(key, String.class, defaultValue);
-        }
-        
-        public Integer getConfigInt(String key, Integer defaultValue) {
-            Object value = config.get(key);
-            if (value instanceof Number number) {
-                return number.intValue();
-            }
-            return defaultValue;
-        }
-        
-        public Boolean getConfigBoolean(String key, Boolean defaultValue) {
-            return getConfigValue(key, Boolean.class, defaultValue);
-        }
-        
+    // Using FilterConfig from RouteConfig
+    public static class FilterConfig extends RouteConfig.FilterConfig {
+        // Additional methods for backward compatibility
         @SuppressWarnings("unchecked")
         public List<String> getConfigStringList(String key, List<String> defaultValue) {
-            Object value = config.get(key);
+            Object value = getConfig().get(key);
             if (value instanceof List<?> list) {
                 return (List<String>) list;
             }
@@ -158,7 +124,7 @@ public class DispatchConfig {
         
         @SuppressWarnings("unchecked")
         public Map<String, Object> getConfigMap(String key, Map<String, Object> defaultValue) {
-            Object value = config.get(key);
+            Object value = getConfig().get(key);
             if (value instanceof Map<?, ?> map) {
                 return (Map<String, Object>) map;
             }

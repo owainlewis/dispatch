@@ -63,12 +63,10 @@ public class BackendClient {
                 String name = entry.getKey();
                 String value = entry.getValue();
                 
-                if (!isHopByHopHeader(name) && !name.equalsIgnoreCase("host")) {
+                if (!isHopByHopHeader(name)) {
                     builder.header(name, value);
                 }
             });
-            
-            builder.header("Host", extractHost(targetUri));
             
             java.net.http.HttpRequest httpRequest = builder.build();
             
@@ -114,23 +112,17 @@ public class BackendClient {
         }
     }
     
-    private String extractHost(URI uri) {
-        String host = uri.getHost();
-        int port = uri.getPort();
-        
-        if (port != -1 && port != 80 && port != 443) {
-            return host + ":" + port;
-        }
-        
-        return host;
-    }
     
     private boolean isHopByHopHeader(String headerName) {
         return switch (headerName.toLowerCase()) {
             case "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-                 "te", "trailers", "transfer-encoding", "upgrade" -> true;
+                 "te", "trailers", "transfer-encoding", "upgrade", "content-length", "host" -> true;
             default -> false;
         };
+    }
+    
+    private boolean isHttp2PseudoHeader(String headerName) {
+        return headerName.startsWith(":");
     }
     
     private HttpResponse convertResponse(java.net.http.HttpResponse<byte[]> httpResponse) {
@@ -140,7 +132,7 @@ public class BackendClient {
         );
         
         httpResponse.headers().map().forEach((name, values) -> {
-            if (!isHopByHopHeader(name)) {
+            if (!isHopByHopHeader(name) && !isHttp2PseudoHeader(name)) {
                 values.forEach(value -> response.addHeader(name, value));
             }
         });

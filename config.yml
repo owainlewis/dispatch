@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+global_filters:
+  - name: logging
+    enabled: true
+    config:
+      level: INFO
+
+routes:
+  - path: "/api/v1/*"
+    backend: "https://jsonplaceholder.typicode.com"
+    filters:
+      - name: authentication
+        enabled: true
+        config:
+          required: true
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 100
+      - name: logging
+        enabled: true
+        config:
+          level: DEBUG
+
+  - path: "/foo"
+    backend: "https://echo.free.beeceptor.com"
+    filters:
+      - name: logging
+        enabled: true
+        config:
+          level: INFO
+
+  - path: "/public/*"
+    backend: "https://httpbin.org"
+    filters:
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 1000

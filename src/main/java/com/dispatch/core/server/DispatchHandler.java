@@ -1,8 +1,8 @@
 package com.dispatch.core.server;
 
-import com.dispatch.core.filter.FilterChain;
 import com.dispatch.core.filter.FilterContext;
 import com.dispatch.core.filter.FilterResult;
+import com.dispatch.core.route.RouteManager;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -18,19 +18,29 @@ import java.util.concurrent.ExecutorService;
 public class DispatchHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
     private static final Logger logger = LoggerFactory.getLogger(DispatchHandler.class);
     
-    private final FilterChain filterChain;
+    private final RouteManager routeManager;
     private final ExecutorService virtualThreadExecutor;
     
-    public DispatchHandler(FilterChain filterChain, ExecutorService virtualThreadExecutor) {
-        this.filterChain = filterChain;
+    public DispatchHandler(RouteManager routeManager, ExecutorService virtualThreadExecutor) {
+        this.routeManager = routeManager;
         this.virtualThreadExecutor = virtualThreadExecutor;
     }
     
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest nettyRequest) {
+        // Copy the buffer content before async processing to avoid reference counting issues
+        byte[] body = new byte[nettyRequest.content().readableBytes()];
+        nettyRequest.content().readBytes(body);
+        
+        // Create a copy of the request data we need
+        HttpMethod method = nettyRequest.method();
+        String uri = nettyRequest.uri();
+        HttpHeaders headers = nettyRequest.headers().copy();
+        InetSocketAddress remoteAddress = (InetSocketAddress) ctx.channel().remoteAddress();
+        
         CompletableFuture.runAsync(() -> {
             try {
-                processRequest(ctx, nettyRequest);
+                processRequest(ctx, method, uri, headers, body, remoteAddress, nettyRequest);
             } catch (Exception e) {
                 logger.error("Error processing request", e);
                 sendErrorResponse(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR, "Internal Server Error");
@@ -38,32 +48,29 @@ public class DispatchHandler extends SimpleChannelInboundHandler<FullHttpRequest
         }, virtualThreadExecutor);
     }
     
-    private void processRequest(ChannelHandlerContext ctx, FullHttpRequest nettyRequest) {
-        InetSocketAddress remoteAddress = (InetSocketAddress) ctx.channel().remoteAddress();
-        
-        byte[] body = new byte[nettyRequest.content().readableBytes()];
-        nettyRequest.content().readBytes(body);
-        
+    private void processRequest(ChannelHandlerContext ctx, HttpMethod method, String uri, HttpHeaders headers, 
+                               byte[] body, InetSocketAddress remoteAddress, FullHttpRequest originalRequest) {
         com.dispatch.core.filter.HttpRequest request = new com.dispatch.core.filter.HttpRequest(
-            nettyRequest.method(),
-            nettyRequest.uri(),
-            nettyRequest.headers(),
+            method,
+            uri,
+            headers,
             body,
             remoteAddress
         );
         
         FilterContext context = new FilterContext(request);
         
-        filterChain.execute(request, context)
+        routeManager.processRequest(request, context)
             .thenAccept(result -> {
                 if (result instanceof FilterResult.Respond respond) {
-                    sendResponse(ctx, respond.response(), nettyRequest);
+                    sendResponse(ctx, respond.response(), originalRequest);
                 } else {
-                    sendErrorResponse(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR, "No response generated");
+                    // If filters ran but none generated a response, it means no route was found
+                    sendErrorResponse(ctx, HttpResponseStatus.NOT_FOUND, "Not Found");
                 }
             })
             .exceptionally(throwable -> {
-                logger.error("Filter chain execution failed", throwable);
+                logger.error("Route processing failed", throwable);
                 sendErrorResponse(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR, "Internal Server Error");
                 return null;
             });

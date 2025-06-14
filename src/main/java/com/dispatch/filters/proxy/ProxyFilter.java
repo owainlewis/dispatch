@@ -27,11 +27,16 @@ public class ProxyFilter implements GatewayFilter {
     @SuppressWarnings("unchecked")
     public ProxyFilter(DispatchConfig.FilterConfig config) {
         List<Map<String, Object>> routeConfigs = (List<Map<String, Object>>) 
-            config.getConfigMap("routes", Map.of()).getOrDefault("routes", List.of());
+            config.getConfig().getOrDefault("routes", List.of());
         
         this.routes = routeConfigs.stream()
             .map(RouteConfig::fromMap)
             .toList();
+        
+        logger.info("ProxyFilter initialized with {} routes", this.routes.size());
+        for (RouteConfig route : this.routes) {
+            logger.info("  Route: {} -> {}", route.getPathPattern(), route.getBackends());
+        }
         
         Duration connectTimeout = Duration.ofSeconds(config.getConfigInt("connect-timeout", 5));
         Duration requestTimeout = Duration.ofSeconds(config.getConfigInt("request-timeout", 30));
