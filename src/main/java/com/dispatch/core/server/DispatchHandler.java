@@ -1,6 +1,8 @@
 package com.dispatch.core.server;
 
-import com.dispatch.core.filter.*;
+import com.dispatch.core.filter.FilterChain;
+import com.dispatch.core.filter.FilterContext;
+import com.dispatch.core.filter.FilterResult;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
@@ -42,7 +44,7 @@ public class DispatchHandler extends SimpleChannelInboundHandler<FullHttpRequest
         byte[] body = new byte[nettyRequest.content().readableBytes()];
         nettyRequest.content().readBytes(body);
         
-        HttpRequest request = new HttpRequest(
+        com.dispatch.core.filter.HttpRequest request = new com.dispatch.core.filter.HttpRequest(
             nettyRequest.method(),
             nettyRequest.uri(),
             nettyRequest.headers(),
@@ -55,7 +57,7 @@ public class DispatchHandler extends SimpleChannelInboundHandler<FullHttpRequest
         filterChain.execute(request, context)
             .thenAccept(result -> {
                 if (result instanceof FilterResult.Respond respond) {
-                    sendResponse(ctx, respond.response());
+                    sendResponse(ctx, respond.response(), nettyRequest);
                 } else {
                     sendErrorResponse(ctx, HttpResponseStatus.INTERNAL_SERVER_ERROR, "No response generated");
                 }
@@ -67,7 +69,7 @@ public class DispatchHandler extends SimpleChannelInboundHandler<FullHttpRequest
             });
     }
     
-    private void sendResponse(ChannelHandlerContext ctx, HttpResponse response) {
+    private void sendResponse(ChannelHandlerContext ctx, com.dispatch.core.filter.HttpResponse response, FullHttpRequest originalRequest) {
         FullHttpResponse nettyResponse = new DefaultFullHttpResponse(
             HttpVersion.HTTP_1_1,
             HttpResponseStatus.valueOf(response.statusCode()),
@@ -81,7 +83,7 @@ public class DispatchHandler extends SimpleChannelInboundHandler<FullHttpRequest
             nettyResponse.headers().set(entry.getKey(), entry.getValue());
         });
         
-        boolean keepAlive = HttpUtil.isKeepAlive(ctx.channel().attr(null).get());
+        boolean keepAlive = HttpUtil.isKeepAlive(originalRequest);
         if (keepAlive) {
             nettyResponse.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
             ctx.writeAndFlush(nettyResponse);

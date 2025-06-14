@@ -38,24 +38,23 @@ class ConfigManagerTest {
     @Test
     void testLoadConfigFromFile() throws IOException {
         String yamlContent = """
-            dispatch:
-              server:
-                port: 9090
-                ssl:
-                  enabled: true
-                  keystore: test.p12
-                  keystore-password: secret
-              filters:
-                - name: logging
-                  enabled: true
-                  config:
-                    level: DEBUG
-                - name: proxy
-                  enabled: true
-                  config:
-                    routes:
-                      - path: "/api/*"
-                        backend: "http://backend:8080"
+            server:
+              port: 9090
+              ssl:
+                enabled: true
+                keystore: test.p12
+                keystore-password: secret
+            filters:
+              - name: logging
+                enabled: true
+                config:
+                  level: DEBUG
+              - name: proxy
+                enabled: true
+                config:
+                  routes:
+                    - path: "/api/*"
+                      backend: "http://backend:8080"
             """;
         
         Path configFile = tempDir.resolve("test-config.yml");
