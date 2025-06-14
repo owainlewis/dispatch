@@ -30,11 +30,6 @@ public class RouteConfig {
     @JsonProperty("enabled")
     private boolean enabled = true;
     
-    @JsonProperty("load-balancer")
-    private String loadBalancer = "round-robin";
-    
-    @JsonProperty("timeout")
-    private TimeoutConfig timeout = new TimeoutConfig();
     
     // Getters and setters
     public String getPath() {
@@ -101,21 +96,6 @@ public class RouteConfig {
         this.enabled = enabled;
     }
     
-    public String getLoadBalancer() {
-        return loadBalancer;
-    }
-    
-    public void setLoadBalancer(String loadBalancer) {
-        this.loadBalancer = loadBalancer;
-    }
-    
-    public TimeoutConfig getTimeout() {
-        return timeout;
-    }
-    
-    public void setTimeout(TimeoutConfig timeout) {
-        this.timeout = timeout != null ? timeout : new TimeoutConfig();
-    }
     
     /**
      * Check if this route is a proxy route
@@ -248,41 +228,6 @@ public class RouteConfig {
         
         public Boolean getConfigBoolean(String key, Boolean defaultValue) {
             return getConfigValue(key, Boolean.class, defaultValue);
-        }
-    }
-    
-    public static class TimeoutConfig {
-        @JsonProperty("connect")
-        private int connect = 5000; // 5 seconds
-        
-        @JsonProperty("request")
-        private int request = 30000; // 30 seconds
-        
-        @JsonProperty("max-retries")
-        private int maxRetries = 3;
-        
-        public int getConnect() {
-            return connect;
-        }
-        
-        public void setConnect(int connect) {
-            this.connect = connect;
-        }
-        
-        public int getRequest() {
-            return request;
-        }
-        
-        public void setRequest(int request) {
-            this.request = request;
-        }
-        
-        public int getMaxRetries() {
-            return maxRetries;
-        }
-        
-        public void setMaxRetries(int maxRetries) {
-            this.maxRetries = maxRetries;
         }
     }
     

@@ -1,70 +1,45 @@
-dispatch:
-  server:
-    port: 8080
-    ssl:
-      enabled: false
-      keystore: classpath:keystore.p12
-      keystore-password: changeit
-  
-  # Filters execute in the order listed
-  filters:
-    - name: logging
-      enabled: true
-      config:
-        level: INFO
-        include-body: false
-        include-headers: false
-    
-    - name: header-transformer
-      enabled: true
-      config:
-        request:
-          add:
-            X-Request-ID: "auto-generated"
-            X-Forwarded-Proto: "http"
-          remove:
-            - "X-Internal-Secret"
-        response:
-          add:
-            X-Powered-By: "Dispatch Gateway"
-          remove:
-            - "Server"
-    
-    - name: authentication
-      enabled: true
-      config:
-        type: bearer-token
-        skip-paths: 
-          - "/health"
-          - "/health/ready"
-          - "/health/live"
-          - "/public/*"
-        provider: default
-    
-    - name: rate-limiting
-      enabled: true
-      config:
-        requests-per-minute: 1000
-        burst-capacity: 100
-        key-type: client-ip
-    
-    - name: proxy
-      enabled: true
-      config:
-        connect-timeout: 5
-        request-timeout: 30
-        max-retries: 3
-        load-balancer: round-robin
-        routes:
-          routes:
-            - path: "/api/users/*"
-              backend: "http://user-service:8080"
-              enabled: true
-            - path: "/api/orders/*"
-              backend: "http://order-service:8080"
-              enabled: true
-            - path: "/api/products/*"
-              backend: 
-                - "http://product-service-1:8080"
-                - "http://product-service-2:8080"
-              enabled: true
+server:
+  port: 8080
+  ssl:
+    enabled: false
+
+global_filters:
+  - name: logging
+    enabled: true
+    config:
+      level: INFO
+
+routes:
+  # Static health check
+  - type: "static"
+    path: "/health"
+    response:
+      status: 200
+      body: "OK"
+      content_type: "text/plain"
+
+  # API routes with authentication and rate limiting
+  - type: "proxy"
+    path: "/api/users/*"
+    backend: "http://user-service:8080"
+    filters:
+      - name: authentication
+        enabled: true
+        config:
+          required: true
+          skip-paths:
+            - "/health"
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 1000
+
+  # Public API routes
+  - type: "proxy"
+    path: "/public/*"
+    backend: "http://public-service:8080"
+    filters:
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 5000
