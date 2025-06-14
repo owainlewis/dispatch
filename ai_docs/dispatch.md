@@ -2,7 +2,7 @@
 
 ## Overview
 
-Dispatch is a high-performance, modular API Gateway built on Netty and Java Virtual Threads. It provides a simple plugin architecture for extending functionality while maintaining exceptional performance and low latency.
+Dispatch is a high-performance, modular API Gateway built on Netty and Java Virtual Threads. It provides a route-centric architecture with support for HTTP proxy and static response backends, along with flexible per-route filter chains.
 
 ## Core Requirements
 
@@ -12,19 +12,25 @@ Dispatch is a high-performance, modular API Gateway built on Netty and Java Virt
 - **Concurrency**: Support 10,000+ concurrent connections
 - **Memory**: Efficient memory usage with Netty's pooled buffers
 
-### 2. Plugin Architecture
-- **Simple Plugin Interface**: Easy-to-implement filter/module system
-- **Order-Based Execution**: Filters execute in the order they are registered/configured
-- **Request/Response Processing**: Filters can modify both requests and responses
+### 2. Route-Centric Architecture
+- **Route Types**: Support for "proxy" and "static" route types
+- **Backend Flexibility**: HTTP proxy to backend services or static response generation
+- **Path Matching**: Exact, wildcard, and pattern-based path matching
+- **Per-Route Configuration**: Independent filter chains and settings per route
+
+### 3. Filter System
+- **Global Filters**: Apply to all routes
+- **Route-Specific Filters**: Apply only to individual routes
+- **Order-Based Execution**: Filters execute in the order they are defined
 - **Async Processing**: All filters support async/non-blocking operations
 
-### 3. Built-in Core Filters
+### 4. Built-in Capabilities
 - **Logging Filter**: Request/response logging with configurable levels
-- **Authentication Filter**: Bearer token, API key, and custom auth support
+- **Authentication Filter**: Bearer token and API key support
 - **Rate Limiting Filter**: Token bucket algorithm with per-client limits
-- **Proxy Filter**: Route requests to backend services
 - **Header Transformer**: Add, remove, or modify headers
-- **Health Check Filter**: Built-in health endpoints
+- **Proxy Handler**: Route requests to backend services
+- **Static Handler**: Return predefined static responses
 
 ## Technical Architecture
 
@@ -33,59 +39,89 @@ Dispatch is a high-performance, modular API Gateway built on Netty and Java Virt
 ```
 Dispatch
 ├── NettyServer (HTTP/1.1, HTTP/2 support)
+├── RouteManager (Route matching and filter chain orchestration)
 ├── FilterChain (Plugin execution pipeline)
-├── FilterRegistry (Plugin management)
-├── ConfigManager (Runtime configuration)
+├── ConfigManager (YAML configuration management)
 └── BackendClient (HTTP client for proxying)
 ```
 
-### 2. Plugin Interface
-
-```java
-public interface GatewayFilter {
-    String getName();
-    boolean shouldApply(HttpRequest request);
-    CompletableFuture<FilterResult> process(HttpRequest request, FilterContext context);
-    
-    // Optional response processing
-    default CompletableFuture<FilterResult> processResponse(HttpResponse response, FilterContext context) {
-        return CompletableFuture.completedFuture(FilterResult.proceed());
-    }
-}
-```
-
-### 3. Request Flow
+### 2. Request Flow
 
 ```
-Incoming Request → Netty Handler → Filter Chain → Backend Proxy → Response
-                                    ↓
-                               [Filter 1] → [Filter 2] → [Filter N]
+Incoming Request → Route Matching → Filter Chain → Backend Handler
+                     ↓               ↓               ↓
+                RouteManager → [Global] + [Route] → [Proxy] or [Static]
+                                Filters           Backend Handler
+```
+
+### 3. Configuration Structure
+
+```yaml
+server:
+  port: 8080
+
+global_filters:
+  - name: logging
+    enabled: true
+    config:
+      level: INFO
+
+routes:
+  - type: "proxy"                    # HTTP proxy route
+    path: "/api/v1/*"
+    backend: "https://api.example.com"
+    filters:
+      - name: authentication
+        enabled: true
+
+  - type: "static"                   # Static response route
+    path: "/health"
+    response:
+      status: 200
+      body: "OK"
+      content_type: "text/plain"
 ```
 
 ## Detailed Requirements
 
-### 1. Server Implementation
+### 1. Route Management
 
-#### Netty Server Setup
-- Use Netty ServerBootstrap with NioEventLoopGroup
-- HTTP/1.1 codec with aggregation for complete requests
-- SSL/TLS support with configurable certificates
-- Graceful shutdown handling
+#### Route Types
 
-#### Virtual Thread Integration
-- Process business logic in virtual threads
-- Keep Netty event loop free for I/O operations
-- Configurable thread pool for filter execution
+**Proxy Routes**: Forward requests to HTTP backends
+```yaml
+- type: "proxy"
+  path: "/api/users/*"
+  backend: "https://user-service.example.com"
+  strip-prefix: "/api"          # Optional: remove prefix
+  add-prefix: "/v1"             # Optional: add prefix
+  enabled: true                 # Optional: default true
+  timeout:                      # Optional: route-specific timeouts
+    connect: 5000
+    request: 30000
+    max-retries: 3
+```
 
-#### Performance Optimizations
-- Connection pooling for backend services
-- HTTP keep-alive support
-- Efficient request/response parsing
-- Memory pool management
+**Static Routes**: Return predefined responses
+```yaml
+- type: "static"
+  path: "/status"
+  response:
+    status: 200
+    body: '{"status": "healthy", "version": "1.0.0"}'
+    content_type: "application/json"
+    headers:                    # Optional: custom headers
+      Cache-Control: "no-cache"
+```
+
+#### Path Matching
+- **Exact match**: `/api/users` matches only `/api/users`
+- **Wildcard suffix**: `/api/users/*` matches `/api/users/123`, `/api/users/123/posts`
+- **Pattern matching**: `/api/*/posts` matches `/api/users/posts`, `/api/orders/posts`
 
 ### 2. Filter System
 
-#### Filter Interface Requirements
+#### Filter Interface
 ```java
 public interface GatewayFilter {
     /**
@@ -144,6 +180,7 @@ public sealed interface FilterResult {
     record Proceed() implements FilterResult {}
     record Respond(HttpResponse response) implements FilterResult {}
 }
+```
 
 ### 3. Built-in Filters
 
@@ -153,20 +190,36 @@ public sealed interface FilterResult {
 public class LoggingFilter implements GatewayFilter {
     // Log format: [timestamp] method path status duration
     // Configurable log levels: DEBUG, INFO, WARN, ERROR
-    // Optional: Log request/response bodies
 }
+```
+
+Configuration:
+```yaml
+- name: logging
+  enabled: true
+  config:
+    level: INFO             # DEBUG, INFO, WARN, ERROR
 ```
 
 #### Authentication Filter
 ```java
 @Component  
 public class AuthenticationFilter implements GatewayFilter {
-    // Support multiple auth types:
-    // - Bearer Token validation
-    // - API Key validation (header/query param)
-    // - Custom authentication via pluggable AuthProvider
-    // - Skip authentication for configured paths (e.g., /health, /public/*)
+    // Support Bearer Token validation
+    // Configurable skip paths for public endpoints
+    // Context attribute injection for downstream filters
 }
+```
+
+Configuration:
+```yaml
+- name: authentication
+  enabled: true
+  config:
+    required: true          # Require authentication
+    skip-paths:             # Optional: paths to skip
+      - "/health"
+      - "/public/*"
 ```
 
 #### Rate Limiting Filter
@@ -174,10 +227,18 @@ public class AuthenticationFilter implements GatewayFilter {
 @Component
 public class RateLimitingFilter implements GatewayFilter {
     // Token bucket algorithm
-    // Configurable rates per client IP
-    // Redis backend support for distributed rate limiting
-    // Custom key extraction (IP, user ID, API key)
+    // Per-client IP rate limiting
+    // Configurable rates and burst capacity
 }
+```
+
+Configuration:
+```yaml
+- name: rate-limiting
+  enabled: true
+  config:
+    requests-per-minute: 1000   # Rate limit
+    burst-capacity: 100         # Burst capacity
 ```
 
 #### Header Transformer Filter
@@ -185,78 +246,129 @@ public class RateLimitingFilter implements GatewayFilter {
 @Component
 public class HeaderTransformerFilter implements GatewayFilter {
     // Add headers: X-Forwarded-For, X-Request-ID, etc.
-    // Remove sensitive headers from requests to backends
-    // Transform header values (uppercase, lowercase, etc.)
-    // Conditional header manipulation based on request properties
+    // Remove sensitive headers
+    // Transform header values
+    // Separate request and response processing
 }
 ```
 
-#### Proxy Filter
-```java
-@Component
-public class ProxyFilter implements GatewayFilter {
-    // Route requests to backend services based on path patterns
-    // Support multiple load balancing strategies (round-robin, least-connections)
-    // Circuit breaker pattern for backend health
-    // Timeout and retry configuration
-    // Request/response streaming for large payloads
-}
-```
-
-### 4. Configuration System
-
-#### Application Configuration
+Configuration:
 ```yaml
-dispatch:
-  server:
-    port: 8080
-    ssl:
-      enabled: false
-      keystore: classpath:keystore.p12
-      keystore-password: changeit
-  
-  # Filters execute in the order listed
-  filters:
-    - name: logging
-      enabled: true
-      config:
-        level: INFO
-        include-body: false
-    
-    - name: authentication
-      enabled: true
-      config:
-        type: bearer-token
-        skip-paths: ["/health", "/public/*"]
-    
-    - name: rate-limiting
-      enabled: true
-      config:
-        requests-per-minute: 1000
-        burst-capacity: 100
-    
-    - name: proxy
-      enabled: true
-      config:
-        routes:
-          - path: "/api/users/*"
-            backend: "http://user-service:8080"
-          - path: "/api/orders/*"
-            backend: "http://order-service:8080"
+- name: header-transformer
+  enabled: true
+  config:
+    request:
+      add:
+        X-Request-ID: "auto-generated"
+        X-Custom-Header: "value"
+      remove:
+        - "X-Internal-Secret"
+    response:
+      add:
+        X-Powered-By: "Dispatch Gateway"
+      remove:
+        - "Server"
 ```
 
-#### Runtime Filter Registration
+### 4. Backend Handlers
+
+#### Proxy Handler
 ```java
-// Simple filter management
-@Service
-public class FilterManager {
-    public void registerFilter(GatewayFilter filter); // Adds to end of chain
-    public void unregisterFilter(String filterName);
-    public List<GatewayFilter> getActiveFilters(); // Returns in execution order
+public class ProxyFilter implements GatewayFilter {
+    // Route requests to HTTP backends
+    // Path transformation (strip/add prefix)
+    // Timeout and retry configuration
+    // Proper error handling for backend failures
 }
 ```
 
-### 5. Backend Client
+Features:
+- HTTP/1.1 and HTTP/2 support
+- Connection pooling and keep-alive
+- Configurable timeouts and retries
+- Proper header passthrough
+- Request/response streaming
+
+#### Static Response Handler
+```java
+public class StaticResponseFilter implements GatewayFilter {
+    // Return predefined static responses
+    // Support for custom headers
+    // Content-Type and Content-Length handling
+    // JSON and text response support
+}
+```
+
+Features:
+- Configurable status codes
+- Custom response headers
+- Multiple content types (text, JSON, HTML, etc.)
+- Efficient static response generation
+
+### 5. Configuration System
+
+#### Complete Configuration Example
+```yaml
+server:
+  port: 8080
+  ssl:
+    enabled: false
+    keystore: classpath:keystore.p12
+    keystore-password: changeit
+
+# Global filters apply to all routes
+global_filters:
+  - name: logging
+    enabled: true
+    config:
+      level: INFO
+
+# Routes are processed in order
+routes:
+  # Static health check
+  - type: "static"
+    path: "/health"
+    response:
+      status: 200
+      body: "OK"
+      content_type: "text/plain"
+
+  # API routes with authentication
+  - type: "proxy"
+    path: "/api/v1/*"
+    backend: "https://jsonplaceholder.typicode.com"
+    filters:
+      - name: authentication
+        enabled: true
+        config:
+          required: true
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 100
+
+  # Public API routes
+  - type: "proxy"
+    path: "/public/*"
+    backend: "https://httpbin.org"
+    filters:
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 1000
+
+  # Static JSON responses
+  - type: "static"
+    path: "/version"
+    response:
+      status: 200
+      body: '{"version": "1.0.0", "build": "12345"}'
+      content_type: "application/json"
+      headers:
+        Cache-Control: "public, max-age=3600"
+```
+
+### 6. Backend Client
 
 #### HTTP Client Requirements
 - Use Java 21 HttpClient with virtual thread executor
@@ -268,19 +380,8 @@ public class FilterManager {
 #### Proxy Features
 - Path-based routing to backend services
 - Request/response header passthrough
+- Path transformation (strip/add prefix)
 - Proper error handling for backend failures
-- Basic request/response streaming
-
-### 6. Monitoring and Observability
-
-#### Health Checks
-- Built-in `/health` endpoint returning JSON status
-- Simple UP/DOWN status based on server availability
-
-#### Logging
-- Structured logging with request method, path, status, duration
-- Configurable log levels (DEBUG, INFO, WARN, ERROR)
-- Optional request/response body logging for debugging
 
 ## Implementation Guidelines
 
@@ -289,41 +390,44 @@ public class FilterManager {
 src/main/java/com/dispatch/
 ├── core/
 │   ├── server/           # Netty server implementation
+│   ├── route/            # Route management and matching
 │   ├── filter/           # Filter system
 │   └── config/           # Configuration management
 ├── filters/              # Built-in filters
 │   ├── auth/
-│   ├── proxy/
 │   ├── ratelimit/
-│   └── transform/
+│   ├── transform/
+│   └── LoggingFilter.java
 ├── client/               # Backend HTTP client
-└── monitoring/           # Metrics and health checks
+└── monitoring/           # Health checks
 ```
 
-### 2. Dependencies
-```xml
-<dependencies>
-    <!-- Core -->
-    <dependency>
-        <groupId>io.netty</groupId>
-        <artifactId>netty-all</artifactId>
-        <version>4.1.100.Final</version>
-    </dependency>
+### 2. Key Classes
+
+#### RouteManager
+```java
+@Component
+public class RouteManager {
+    public CompletableFuture<FilterResult> processRequest(HttpRequest request, FilterContext context);
+    private RouteConfig findMatchingRoute(String path);
+    private List<GatewayFilter> createFilterChain(RouteConfig route);
+}
+```
+
+#### RouteConfig
+```java
+public class RouteConfig {
+    private String type;                    // "proxy" or "static"
+    private String path;                    // Route path pattern
+    private String backend;                 // For proxy routes
+    private StaticResponseConfig response;  // For static routes
+    private List<FilterConfig> filters;     // Route-specific filters
     
-    <!-- Configuration -->
-    <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
-        <version>2.15.2</version>
-    </dependency>
-    
-    <!-- Logging -->
-    <dependency>
-        <groupId>ch.qos.logback</groupId>
-        <artifactId>logback-classic</artifactId>
-        <version>1.4.11</version>
-    </dependency>
-</dependencies>
+    public boolean isProxyRoute();
+    public boolean isStaticRoute();
+    public boolean matches(String requestPath);
+    public String transformPath(String originalPath);
+}
 ```
 
 ### 3. Plugin Development Example
@@ -340,7 +444,6 @@ public class JwtAuthenticationFilter implements GatewayFilter {
     
     @Override
     public boolean shouldApply(HttpRequest request) {
-        // Skip for public endpoints
         return !request.path().startsWith("/public");
     }
     
@@ -368,18 +471,7 @@ public class JwtAuthenticationFilter implements GatewayFilter {
             }
         });
     }
-    
-    private JwtClaims validateJwtToken(String token) throws JwtException {
-        // JWT validation logic
-        return null;
-    }
 }
-
-// Register filters in desired order
-filterManager.registerFilter(new LoggingFilter());          // 1st
-filterManager.registerFilter(new JwtAuthenticationFilter()); // 2nd  
-filterManager.registerFilter(new RateLimitingFilter());     // 3rd
-filterManager.registerFilter(new ProxyFilter());            // 4th (last)
 ```
 
 ## Acceptance Criteria
@@ -391,21 +483,21 @@ filterManager.registerFilter(new ProxyFilter());            // 4th (last)
 - [ ] Memory usage remains stable under load
 
 ### Functionality Requirements
-- [ ] Plugin system allows easy filter development
-- [ ] Filters execute in registration order
-- [ ] Configuration supports YAML setup
-- [ ] Built-in filters cover common gateway use cases (auth, logging, proxy)
-- [ ] Backend proxying with proper error handling works correctly
-- [ ] Request and response processing through filter chain
+- [ ] Route-centric configuration with proxy and static backends
+- [ ] Global and per-route filter chains
+- [ ] Path matching with wildcards and patterns
+- [ ] Built-in filters cover common gateway use cases
+- [ ] Backend proxying with proper error handling
+- [ ] Static response generation with custom headers
 
 ### Quality Requirements
 - [ ] Comprehensive unit tests for core components
-- [ ] Integration tests for filter chain execution
+- [ ] Integration tests for route matching and filter execution
 - [ ] Performance testing for target throughput
-- [ ] Clear documentation with filter development examples
+- [ ] Clear documentation with examples
 
 ### Usability Requirements
-- [ ] Simple filter development with minimal boilerplate
+- [ ] Simple route and filter configuration
 - [ ] Clear error messages and logging
 - [ ] Configuration validation with helpful error messages
 - [ ] Easy setup and getting started experience
@@ -414,33 +506,28 @@ filterManager.registerFilter(new ProxyFilter());            // 4th (last)
 
 ### Technical Metrics
 - **Throughput**: 50,000+ req/s
-- **Latency**: P99 < 1ms for auth + proxy
+- **Latency**: P99 < 1ms for static responses, P99 < 5ms for proxy
 - **Memory**: < 512MB for typical workload
 - **Startup Time**: < 5 seconds
 
 ### Developer Experience
-- **Filter Development**: < 50 lines of code for simple filter
+- **Route Configuration**: < 10 lines for basic proxy route
+- **Filter Development**: < 50 lines for simple filter
 - **Setup Time**: < 10 minutes from clone to running
-- **Documentation**: Complete API docs and tutorials
-
-### Adoption Metrics
-- GitHub stars and forks
-- Maven Central download count
-- Community contributions (filters, bug reports, PRs)
 
 ## Future Considerations
 
 ### Phase 2 Features
+- Multiple backends per proxy route with load balancing
 - WebSocket proxying support
 - HTTP/2 server push capabilities
 - gRPC protocol support
-- Built-in service discovery
-- Configuration API for runtime changes
+- Circuit breaker pattern for backend health
 
 ### Performance Optimizations
 - Zero-copy optimizations for large payloads
-- Custom memory allocators
-- Advanced connection pooling strategies
 - Native image compilation with GraalVM
+- Advanced connection pooling strategies
+- Request/response streaming improvements
 
-This PRD provides a comprehensive blueprint for building Dispatch as a production-ready, high-performance API Gateway with an intuitive plugin system.
+This PRD provides a comprehensive blueprint for Dispatch as a production-ready, high-performance API Gateway with a clean route-centric architecture supporting both proxy and static response backends.

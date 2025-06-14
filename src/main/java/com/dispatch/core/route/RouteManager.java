@@ -253,18 +253,15 @@ public class RouteManager {
         
         @Override
         public CompletableFuture<FilterResult> process(HttpRequest request, FilterContext context) {
-            List<String> backends = route.getBackends();
-            if (backends.isEmpty()) {
+            String backend = route.getBackend();
+            if (backend == null || backend.isEmpty()) {
                 return CompletableFuture.completedFuture(
-                    FilterResult.error(503, "No available backends configured")
+                    FilterResult.error(503, "No backend configured")
                 );
             }
             
             String targetPath = route.transformPath(request.path());
             HttpRequest transformedRequest = transformRequest(request, targetPath);
-            
-            // Simple round-robin for now (could be improved with load balancer strategy)
-            String backend = backends.get(0);
             
             logger.debug("Proxying request {} {} to backend: {}", 
                 request.method(), request.path(), backend);

@@ -10,7 +10,7 @@ global_filters:
 routes:
   - type: "proxy"
     path: "/api/v1/*"
-    backends: ["https://jsonplaceholder.typicode.com"]
+    backend: "https://jsonplaceholder.typicode.com"
     filters:
       - name: authentication
         enabled: true
@@ -27,7 +27,7 @@ routes:
 
   - type: "proxy"
     path: "/foo"
-    backends: ["https://echo.free.beeceptor.com"]
+    backend: "https://echo.free.beeceptor.com"
     filters:
       - name: logging
         enabled: true
@@ -36,7 +36,7 @@ routes:
 
   - type: "proxy"
     path: "/public/*"
-    backends: ["https://httpbin.org"]
+    backend: "https://httpbin.org"
     filters:
       - name: rate-limiting
         enabled: true

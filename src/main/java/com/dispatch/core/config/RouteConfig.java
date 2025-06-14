@@ -12,8 +12,8 @@ public class RouteConfig {
     @JsonProperty("type")
     private String type;
     
-    @JsonProperty("backends")
-    private List<String> backends;
+    @JsonProperty("backend")
+    private String backend;
     
     @JsonProperty("response")
     private StaticResponseConfig response;
@@ -53,12 +53,12 @@ public class RouteConfig {
         this.type = type;
     }
     
-    public List<String> getBackends() {
-        return backends != null ? backends : List.of();
+    public String getBackend() {
+        return backend;
     }
     
-    public void setBackends(List<String> backends) {
-        this.backends = backends;
+    public void setBackend(String backend) {
+        this.backend = backend;
     }
     
     public StaticResponseConfig getResponse() {

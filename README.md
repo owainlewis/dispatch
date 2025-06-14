@@ -1,15 +1,15 @@
 # Dispatch API Gateway
 
-A high-performance, modular API Gateway built on Netty and Java Virtual Threads. Dispatch provides a simple plugin architecture for extending functionality while maintaining exceptional performance and low latency.
+A high-performance, modular API Gateway built on Netty and Java Virtual Threads. Dispatch provides a route-centric architecture with both HTTP proxy and static response backends.
 
 ## Features
 
 - **High Performance**: Built on Netty with virtual thread integration, targeting 50,000+ requests/second
-- **Plugin Architecture**: Simple filter interface with order-based execution
-- **Built-in Filters**: Logging, Authentication, Rate Limiting, Proxy, Header Transformation, Health Checks
-- **Configuration**: YAML-based configuration with runtime management
+- **Route-Centric Architecture**: Simple route configuration with per-route filter chains
+- **Multiple Backend Types**: HTTP proxy and static response backends
+- **Built-in Filters**: Logging, Authentication, Rate Limiting, Header Transformation
+- **Configuration**: YAML-based configuration with clear, explicit structure
 - **Monitoring**: Built-in health check endpoints and structured logging
-- **Load Balancing**: Multiple load balancing strategies for backend services
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ mvn clean package
 java -jar target/dispatch-gateway-1.0.0-SNAPSHOT.jar
 
 # Run with custom configuration
-java -jar target/dispatch-gateway-1.0.0-SNAPSHOT.jar config/my-config.yml
+java -jar target/dispatch-gateway-1.0.0-SNAPSHOT.jar config.yml
 ```
 
 The gateway will start on port 8080 by default.
@@ -40,116 +40,160 @@ The gateway will start on port 8080 by default.
 ### Test the Gateway
 
 ```bash
-# Health check
-curl http://localhost:8080/health
+# Test static response
+curl http://localhost:8080/hello
 
-# Test with authentication (using default test token)
-curl -H "Authorization: Bearer test-token" http://localhost:8080/api/test
+# Test health endpoint
+curl http://localhost:8080/status
+
+# Test proxy route (with authentication)
+curl -H "Authorization: Bearer test-token" http://localhost:8080/api/v1/posts/1
 ```
 
 ## Configuration
 
-Dispatch uses YAML configuration files. Here's a minimal example:
+Dispatch uses a route-centric YAML configuration with explicit backend types:
 
 ```yaml
-dispatch:
-  server:
-    port: 8080
-    ssl:
-      enabled: false
-  
+server:
+  port: 8080
+
+global_filters:
+  - name: logging
+    enabled: true
+    config:
+      level: INFO
+
+routes:
+  # HTTP Proxy Route
+  - type: "proxy"
+    path: "/api/v1/*"
+    backend: "https://jsonplaceholder.typicode.com"
+    filters:
+      - name: authentication
+        enabled: true
+        config:
+          required: true
+      - name: rate-limiting
+        enabled: true
+        config:
+          requests-per-minute: 100
+
+  # Static Response Route
+  - type: "static"
+    path: "/hello"
+    response:
+      status: 200
+      body: "Hello, World!"
+      content_type: "text/plain"
+      headers:
+        X-Custom-Header: "dispatch-gateway"
+
+  # JSON Static Response
+  - type: "static"
+    path: "/status"
+    response:
+      status: 200
+      body: '{"status": "healthy", "version": "1.0.0"}'
+      content_type: "application/json"
+```
+
+## Route Types
+
+### Proxy Routes
+
+Proxy routes forward requests to HTTP backends:
+
+```yaml
+- type: "proxy"
+  path: "/api/users/*"
+  backend: "https://api.example.com"
+  strip-prefix: "/api"        # Remove prefix before forwarding
+  add-prefix: "/v1"           # Add prefix before forwarding
   filters:
-    - name: logging
-      enabled: true
-      config:
-        level: INFO
-    
     - name: authentication
       enabled: true
-      config:
-        type: bearer-token
-        skip-paths: ["/health", "/public/*"]
-    
-    - name: proxy
+    - name: rate-limiting
       enabled: true
       config:
-        routes:
-          routes:
-            - path: "/api/users/*"
-              backend: "http://user-service:8080"
+        requests-per-minute: 1000
 ```
 
-### Server Configuration
+### Static Response Routes
+
+Static routes return predefined responses without proxying:
 
 ```yaml
-dispatch:
-  server:
-    port: 8080              # Server port
-    ssl:
-      enabled: true         # Enable SSL/TLS
-      keystore: keystore.p12
-      keystore-password: secret
+- type: "static"
+  path: "/health"
+  response:
+    status: 200
+    body: "OK"
+    content_type: "text/plain"
+    headers:
+      Cache-Control: "no-cache"
 ```
 
-### Filter Configuration
+## Filter Configuration
 
-Filters are executed in the order they are defined in the configuration.
+### Global Filters
 
-#### Logging Filter
+Global filters apply to all routes:
+
+```yaml
+global_filters:
+  - name: logging
+    enabled: true
+    config:
+      level: INFO
+```
+
+### Route-Specific Filters
+
+Route-specific filters apply only to individual routes:
+
+```yaml
+routes:
+  - type: "proxy"
+    path: "/api/*"
+    backend: "https://api.example.com"
+    filters:
+      - name: authentication
+        enabled: true
+        config:
+          required: true
+      - name: header-transformer
+        enabled: true
+        config:
+          request:
+            add:
+              X-Request-ID: "auto-generated"
+```
+
+## Built-in Filters
+
+### Logging Filter
 
 ```yaml
 - name: logging
   enabled: true
   config:
     level: INFO             # DEBUG, INFO, WARN, ERROR
-    include-body: false     # Log request/response bodies
-    include-headers: false  # Log headers
 ```
 
-#### Authentication Filter
+### Authentication Filter
 
 ```yaml
 - name: authentication
   enabled: true
   config:
-    type: bearer-token      # bearer-token, api-key, custom
-    skip-paths:             # Paths to skip authentication
+    required: true          # Require authentication
+    skip-paths:             # Optional: paths to skip
       - "/health"
       - "/public/*"
-    provider: default       # default, jwt, static
 ```
 
-##### JWT Authentication
-
-```yaml
-- name: authentication
-  enabled: true
-  config:
-    type: bearer-token
-    provider: jwt
-    jwt:
-      secret: "your-jwt-secret"
-      issuer: "your-issuer"
-```
-
-##### Static Token Authentication
-
-```yaml
-- name: authentication
-  enabled: true
-  config:
-    type: bearer-token
-    provider: static
-    auth:
-      valid-tokens:
-        - "token-1"
-        - "token-2"
-      valid-api-keys:
-        - "api-key-1"
-        - "api-key-2"
-```
-
-#### Rate Limiting Filter
+### Rate Limiting Filter
 
 ```yaml
 - name: rate-limiting
@@ -157,11 +201,9 @@ Filters are executed in the order they are defined in the configuration.
   config:
     requests-per-minute: 1000   # Rate limit
     burst-capacity: 100         # Burst capacity
-    key-type: client-ip         # client-ip, user-id, api-key, custom
-    custom-header: X-Client-ID  # For custom key type
 ```
 
-#### Header Transformer Filter
+### Header Transformer Filter
 
 ```yaml
 - name: header-transformer
@@ -173,8 +215,6 @@ Filters are executed in the order they are defined in the configuration.
         X-Custom-Header: "value"
       remove:
         - "X-Internal-Secret"
-      transform:
-        X-User-Agent: "lowercase"
     response:
       add:
         X-Powered-By: "Dispatch Gateway"
@@ -182,67 +222,35 @@ Filters are executed in the order they are defined in the configuration.
         - "Server"
 ```
 
-#### Proxy Filter
+## Path Matching
 
-```yaml
-- name: proxy
-  enabled: true
-  config:
-    connect-timeout: 5          # Connection timeout (seconds)
-    request-timeout: 30         # Request timeout (seconds)
-    max-retries: 3             # Maximum retries
-    load-balancer: round-robin  # round-robin, random
-    routes:
-      routes:
-        - path: "/api/users/*"
-          backend: "http://user-service:8080"
-          enabled: true
-        
-        - path: "/api/orders/*"
-          backend:                    # Multiple backends for load balancing
-            - "http://order-service-1:8080"
-            - "http://order-service-2:8080"
-          strip-prefix: "/api"        # Remove prefix before forwarding
-          add-prefix: "/v1"           # Add prefix before forwarding
-          enabled: true
-```
+Routes support flexible path matching:
 
-## Health Checks
+- **Exact match**: `/api/users` matches only `/api/users`
+- **Wildcard suffix**: `/api/users/*` matches `/api/users/123`, `/api/users/123/posts`
+- **Pattern matching**: `/api/*/posts` matches `/api/users/posts`, `/api/orders/posts`
 
-Dispatch provides built-in health check endpoints:
+## Performance
 
-- `GET /health` - Overall health status
-- `GET /health/ready` - Readiness check
-- `GET /health/live` - Liveness check
+Dispatch is designed for high performance:
 
-Example response:
+- **Target**: 50,000+ requests/second
+- **Latency**: Sub-millisecond P99 latency
+- **Concurrency**: 10,000+ concurrent connections
+- **Memory**: Efficient memory usage with Netty's pooled buffers
 
-```json
-{
-  "status": "UP",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "uptime": "PT2H30M",
-  "checks": {
-    "memory": {
-      "status": "UP",
-      "message": "Memory usage: 45.2% (471859200/1073741824 bytes)",
-      "usedBytes": 471859200,
-      "maxBytes": 1073741824,
-      "usagePercent": 45.2
-    },
-    "system": {
-      "status": "UP",
-      "message": "System load: 1.25 (processors: 8)",
-      "systemLoadAverage": 1.25,
-      "availableProcessors": 8
-    }
-  }
-}
+### Performance Tuning
+
+```bash
+# Recommended JVM settings
+java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Xms2g -Xmx2g \
+     --enable-preview \
+     -jar dispatch-gateway.jar
 ```
 
 ## Custom Filters
 
-You can create custom filters by implementing the `GatewayFilter` interface:
+Create custom filters by implementing the `GatewayFilter` interface:
 
 ```java
 @Component
@@ -262,68 +270,12 @@ public class CustomFilter implements GatewayFilter {
     public CompletableFuture<FilterResult> process(HttpRequest request, FilterContext context) {
         return CompletableFuture.supplyAsync(() -> {
             // Your custom logic here
-            
-            // Store data in context for downstream filters
             context.setAttribute("custom.data", "value");
-            
-            // Continue to next filter
-            return FilterResult.proceed();
-            
-            // Or return a response immediately
-            // return FilterResult.respond(HttpResponse.ok("Custom response"));
-            
-            // Or return an error
-            // return FilterResult.error(400, "Custom error");
-        });
-    }
-    
-    @Override
-    public CompletableFuture<FilterResult> processResponse(HttpResponse response, FilterContext context) {
-        return CompletableFuture.supplyAsync(() -> {
-            // Modify response if needed
-            response.setHeader("X-Custom-Filter", "processed");
             return FilterResult.proceed();
         });
     }
 }
 ```
-
-## Performance
-
-Dispatch is designed for high performance:
-
-- **Target**: 50,000+ requests/second
-- **Latency**: Sub-millisecond P99 latency
-- **Concurrency**: 10,000+ concurrent connections
-- **Memory**: Efficient memory usage with Netty's pooled buffers
-
-### Performance Tuning
-
-1. **JVM Settings**:
-```bash
-java -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -Xms2g -Xmx2g \
-     --enable-preview \
-     -jar dispatch-gateway.jar
-```
-
-2. **Virtual Threads**: Dispatch automatically uses virtual threads for filter processing
-
-3. **Connection Pooling**: HTTP client uses connection pooling for backend services
-
-## Monitoring and Observability
-
-### Logging
-
-Dispatch uses structured logging with configurable levels:
-
-```
-2024-01-15 10:30:15.123 [virtual-thread-1] INFO  LoggingFilter - REQUEST 192.168.1.100 GET /api/users 
-2024-01-15 10:30:15.145 [virtual-thread-1] INFO  LoggingFilter - RESPONSE 192.168.1.100 GET /api/users 200 22ms
-```
-
-### Metrics
-
-Request metrics are automatically tracked and exposed via health endpoints.
 
 ## Development
 
@@ -342,7 +294,7 @@ mvn test
 ### Running in Development
 
 ```bash
-mvn exec:java -Dexec.mainClass="com.dispatch.DispatchGateway" -Dexec.args="src/main/resources/application.yml"
+mvn exec:java -Dexec.mainClass="com.dispatch.DispatchGateway" -Dexec.args="config.yml"
 ```
 
 ## Docker
@@ -351,17 +303,36 @@ mvn exec:java -Dexec.mainClass="com.dispatch.DispatchGateway" -Dexec.args="src/m
 FROM openjdk:21-jdk-slim
 
 COPY target/dispatch-gateway-1.0.0-SNAPSHOT.jar app.jar
-COPY src/main/resources/application.yml application.yml
+COPY config.yml config.yml
 
 EXPOSE 8080
 
-CMD ["java", "--enable-preview", "-jar", "app.jar", "application.yml"]
+CMD ["java", "--enable-preview", "-jar", "app.jar", "config.yml"]
 ```
 
 ```bash
 docker build -t dispatch-gateway .
 docker run -p 8080:8080 dispatch-gateway
 ```
+
+## Architecture
+
+Dispatch uses a simple, route-centric architecture:
+
+```
+Incoming Request → Route Matching → Filter Chain → Backend Handler
+                                      ↓
+                              [Global Filters] + [Route Filters]
+                                      ↓
+                              [Proxy Handler] or [Static Handler]
+```
+
+### Key Components
+
+- **RouteManager**: Matches incoming requests to configured routes
+- **FilterChain**: Executes global and route-specific filters in order
+- **ProxyHandler**: Forwards requests to HTTP backends
+- **StaticHandler**: Returns predefined static responses
 
 ## Contributing
 
