@@ -1,5 +1,6 @@
 package com.dispatch.core.config;
 
+import com.dispatch.core.Constants;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
@@ -40,20 +41,10 @@ public class DispatchConfig {
         this.globalFilters = globalFilters != null ? globalFilters : List.of();
     }
     
-    // Keep old getters for backward compatibility during transition
-    @Deprecated
-    public List<FilterConfig> getFilters() {
-        return globalFilters;
-    }
-    
-    @Deprecated
-    public void setFilters(List<FilterConfig> filters) {
-        this.globalFilters = filters != null ? filters : List.of();
-    }
     
     public static class ServerConfig {
         @JsonProperty("port")
-        private int port = 8080;
+        private int port = Constants.DEFAULT_SERVER_PORT;
         
         @JsonProperty("ssl")
         private SslConfig ssl = new SslConfig();

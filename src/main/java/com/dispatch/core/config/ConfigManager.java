@@ -12,7 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-public class ConfigManager {
+public class ConfigManager implements IConfigManager {
     private static final Logger logger = LoggerFactory.getLogger(ConfigManager.class);
     
     private final ObjectMapper yamlMapper;

@@ -12,7 +12,7 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 
-public class BackendClient {
+public class BackendClient implements IBackendClient {
     private static final Logger logger = LoggerFactory.getLogger(BackendClient.class);
     
     private final HttpClient httpClient;

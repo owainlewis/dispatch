@@ -4,10 +4,10 @@ import com.dispatch.client.BackendClient;
 import com.dispatch.core.config.DispatchConfig;
 import com.dispatch.core.config.RouteConfig;
 import com.dispatch.core.filter.*;
-import com.dispatch.filters.LoggingFilter;
-import com.dispatch.filters.auth.AuthenticationFilter;
-import com.dispatch.filters.ratelimit.RateLimitingFilter;
-import com.dispatch.filters.transform.HeaderTransformerFilter;
+import com.dispatch.core.Constants;
+import com.dispatch.core.error.StandardErrors;
+import com.dispatch.core.filter.FilterExecutor;
+import com.dispatch.core.filter.FilterFactory;
 import io.netty.handler.codec.http.DefaultHttpHeaders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-public class RouteManager {
+public class RouteManager implements IRouteManager {
     private static final Logger logger = LoggerFactory.getLogger(RouteManager.class);
     
     private final List<RouteConfig> routes;
@@ -37,15 +37,17 @@ public class RouteManager {
         
         if (matchingRoute == null) {
             logger.debug("No matching route found for path: {}", request.path());
+            String requestId = context.getAttribute("requestId", String.class);
             return CompletableFuture.completedFuture(
-                FilterResult.error(404, "No matching route found")
+                StandardErrors.noRouteFound(requestId)
             );
         }
         
         if (!matchingRoute.isEnabled()) {
             logger.debug("Route {} is disabled", matchingRoute.getPath());
+            String requestId = context.getAttribute("requestId", String.class);
             return CompletableFuture.completedFuture(
-                FilterResult.error(503, "Route is temporarily disabled")
+                StandardErrors.backendUnavailable(requestId)
             );
         }
         
@@ -65,8 +67,8 @@ public class RouteManager {
             filters.add(new ProxyFilter(matchingRoute));
         }
         
-        // Execute filters sequentially
-        return executeFilters(filters, request, context, 0);
+        // Execute filters sequentially using shared executor
+        return FilterExecutor.executeFilters(filters, request, context);
     }
     
     private RouteConfig findMatchingRoute(String path) {
@@ -81,97 +83,24 @@ public class RouteManager {
         
         // Add global filters first
         for (DispatchConfig.FilterConfig filterConfig : globalFilters) {
-            if (filterConfig.isEnabled()) {
-                GatewayFilter filter = createFilter(filterConfig);
-                if (filter != null) {
-                    filters.add(filter);
-                }
+            GatewayFilter filter = FilterFactory.createFilter(filterConfig);
+            if (filter != null) {
+                filters.add(filter);
             }
         }
         
         // Add route-specific filters
         for (RouteConfig.FilterConfig filterConfig : route.getFilters()) {
-            if (filterConfig.isEnabled()) {
-                GatewayFilter filter = createFilter(filterConfig);
-                if (filter != null) {
-                    filters.add(filter);
-                }
+            GatewayFilter filter = FilterFactory.createFilter(filterConfig);
+            if (filter != null) {
+                filters.add(filter);
             }
         }
         
         return filters;
     }
     
-    private GatewayFilter createFilter(RouteConfig.FilterConfig filterConfig) {
-        String filterName = filterConfig.getName();
-        
-        return switch (filterName) {
-            case "logging" -> new LoggingFilter(convertToDispatchFilterConfig(filterConfig));
-            case "authentication" -> new AuthenticationFilter(convertToDispatchFilterConfig(filterConfig));
-            case "rate-limiting" -> new RateLimitingFilter(convertToDispatchFilterConfig(filterConfig));
-            case "header-transformer" -> new HeaderTransformerFilter(convertToDispatchFilterConfig(filterConfig));
-            default -> {
-                logger.warn("Unknown filter type: {}", filterName);
-                yield null;
-            }
-        };
-    }
     
-    private DispatchConfig.FilterConfig convertToDispatchFilterConfig(RouteConfig.FilterConfig routeFilterConfig) {
-        DispatchConfig.FilterConfig dispatchFilterConfig = new DispatchConfig.FilterConfig();
-        dispatchFilterConfig.setName(routeFilterConfig.getName());
-        dispatchFilterConfig.setEnabled(routeFilterConfig.isEnabled());
-        dispatchFilterConfig.setConfig(routeFilterConfig.getConfig());
-        return dispatchFilterConfig;
-    }
-    
-    private GatewayFilter createFilter(DispatchConfig.FilterConfig filterConfig) {
-        String filterName = filterConfig.getName();
-        
-        return switch (filterName) {
-            case "logging" -> new LoggingFilter(filterConfig);
-            case "authentication" -> new AuthenticationFilter(filterConfig);
-            case "rate-limiting" -> new RateLimitingFilter(filterConfig);
-            case "header-transformer" -> new HeaderTransformerFilter(filterConfig);
-            default -> {
-                logger.warn("Unknown filter type: {}", filterName);
-                yield null;
-            }
-        };
-    }
-    
-    private CompletableFuture<FilterResult> executeFilters(
-            List<GatewayFilter> filters,
-            HttpRequest request,
-            FilterContext context,
-            int index) {
-        
-        if (index >= filters.size() || context.shouldTerminate()) {
-            return CompletableFuture.completedFuture(FilterResult.proceed());
-        }
-        
-        GatewayFilter filter = filters.get(index);
-        
-        logger.debug("Executing filter: {} for request: {} {}", 
-            filter.getName(), request.method(), request.path());
-        
-        return filter.process(request, context)
-            .thenCompose(result -> {
-                if (result instanceof FilterResult.Respond) {
-                    logger.debug("Filter {} returned response, stopping chain", filter.getName());
-                    return CompletableFuture.completedFuture(result);
-                } else if (result instanceof FilterResult.Proceed) {
-                    return executeFilters(filters, request, context, index + 1);
-                } else {
-                    logger.warn("Unknown filter result type from filter: {}", filter.getName());
-                    return CompletableFuture.completedFuture(FilterResult.proceed());
-                }
-            })
-            .exceptionally(throwable -> {
-                logger.error("Filter {} threw exception", filter.getName(), throwable);
-                return FilterResult.error(500, "Filter execution failed: " + filter.getName());
-            });
-    }
     
     public void shutdown() {
         if (backendClient != null) {
@@ -203,8 +132,9 @@ public class RouteManager {
         public CompletableFuture<FilterResult> process(HttpRequest request, FilterContext context) {
             RouteConfig.StaticResponseConfig staticConfig = route.getResponse();
             if (staticConfig == null) {
+                String requestId = context.getAttribute("requestId", String.class);
                 return CompletableFuture.completedFuture(
-                    FilterResult.error(500, "Static response configuration missing")
+                    StandardErrors.internalServerError("Static response configuration missing", requestId)
                 );
             }
             
@@ -280,7 +210,8 @@ public class RouteManager {
                 .exceptionally(throwable -> {
                     logger.error("Proxy request failed for {} {} to {}", 
                         request.method(), request.path(), backend, throwable);
-                    return FilterResult.error(502, "Backend service error");
+                    String requestId = context.getAttribute("requestId", String.class);
+                    return StandardErrors.backendUnavailable(requestId);
                 });
         }
         
