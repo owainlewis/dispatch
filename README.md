@@ -2,6 +2,8 @@
 
 A high-performance, modular API Gateway built on Netty and Java Virtual Threads. Dispatch provides a route-centric architecture with both HTTP proxy and static response backends.
 
+Dispatch can handle 10k RPS with P99 latency < 250µs.  
+
 ## Features
 
 - **High Performance**: Built on Netty with virtual thread integration, targeting 50,000+ requests/second
